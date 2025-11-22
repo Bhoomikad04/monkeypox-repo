@@ -1,5 +1,4 @@
--FROM tensorflow/tensorflow:2.11.0-py3
-+FROM tensorflow/tensorflow:2.11.0
+FROM tensorflow/tensorflow:2.11.0
 
 WORKDIR /app
 
