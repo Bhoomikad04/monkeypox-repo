@@ -49,7 +49,7 @@ show_plots = st.sidebar.checkbox("Show training plots", value=False)
 uploaded_file = st.file_uploader("Upload an image (jpg/png)", type=["jpg","jpeg","png"])
 if uploaded_file:
     img = Image.open(uploaded_file).convert("RGB")
-    st.image(img, caption="Uploaded Image", use_container_width=True)
+    st.image(img, caption="Uploaded Image", use_column_width=True)
 
     # Preprocess
     desired_size = (128,128)  # match training code
@@ -79,4 +79,4 @@ if show_plots:
     st.subheader("Training plots")
     for fname in sorted(os.listdir(PLOTS_DIR)) if os.path.exists(PLOTS_DIR) else []:
         if fname.endswith(".png"):
-            st.image(os.path.join(PLOTS_DIR, fname), use_container_width=True)
+            st.image(os.path.join(PLOTS_DIR, fname), use_column_width=True)
