@@ -1,0 +1,128 @@
+#Trainer Function
+def train_classifier(train_dataset, test_dataset, num_labels, output_dir, epochs=num_epochs):
+    model = AutoModelForSequenceClassification.from_pretrained(model_name, num_labels=num_labels)
+    training_args = TrainingArguments(
+        output_dir=output_dir,
+        per_device_train_batch_size=batch_size,
+        per_device_eval_batch_size=batch_size,
+        num_train_epochs=epochs,
+        eval_strategy="epoch",
+        save_strategy="epoch",
+        logging_steps=50,
+        learning_rate=2e-5,
+        weight_decay=0.01,
+        load_best_model_at_end=True,
+        metric_for_best_model="accuracy",
+        fp16=torch.cuda.is_available(),
+        report_to="none"
+    )
+
+    def compute_metrics(eval_pred):
+        logits, labels = eval_pred
+        preds = np.argmax(logits, axis=-1)
+        return {"accuracy": accuracy_score(labels, preds)}
+
+    data_collator = DataCollatorWithPadding(tokenizer)
+
+    trainer = Trainer(
+        model=model,
+        args=training_args,
+        train_dataset=train_dataset,
+        eval_dataset=test_dataset,
+        tokenizer=tokenizer,
+        data_collator=data_collator,
+        compute_metrics=compute_metrics
+    )
+    trainer.train()
+    return model, trainer, trainer.evaluate()
+#Train Sentiment Classifier
+print("Training sentiment classifier...")
+sent_model_dir = "sentiment_model"
+os.makedirs(sent_model_dir, exist_ok=True)
+sent_model, sent_trainer, sent_eval = train_classifier(train_sent_ds, test_sent_ds, len(sentiment_labels), sent_model_dir)
+
+#Evaluate Sentiment Classifier
+def get_preds_and_report(trainer, model, dataset, id2label):
+    preds_output = trainer.predict(dataset)
+    logits = preds_output.predictions
+    labels = preds_output.label_ids
+    preds = np.argmax(logits, axis=-1)
+    acc = accuracy_score(labels, preds)
+    report = classification_report(labels, preds, target_names=[id2label[i] for i in sorted(id2label.keys())])
+    cm = confusion_matrix(labels, preds)
+    return acc, report, cm
+
+sent_acc, sent_report, sent_cm = get_preds_and_report(sent_trainer, sent_model, test_sent_ds, id2sent)
+print(f"Sentiment Accuracy: {sent_acc:.4f}\n\n{sent_report}")
+print("Training category classifier...")
+cat_model_dir = "category_model"
+os.makedirs(cat_model_dir, exist_ok=True)
+cat_model, cat_trainer, cat_eval = train_classifier(train_cat_ds, test_cat_ds, len(category_labels), cat_model_dir)
+
+#Evaluate Category Classifier
+cat_acc, cat_report, cat_cm = get_preds_and_report(cat_trainer, cat_model, test_cat_ds, id2cat)
+print(f"Category Accuracy: {cat_acc:.4f}\n\n{cat_report}")
+#Save Models
+sent_trainer.save_model(sent_model_dir)
+cat_trainer.save_model(cat_model_dir)
+print(f"Models saved to '{sent_model_dir}' and '{cat_model_dir}'")
+#Confusion Matrix Visualization
+plt.figure(figsize=(10,4))
+plt.subplot(1,2,1)
+sns.heatmap(sent_cm, annot=True, fmt='d', xticklabels=sentiment_labels, yticklabels=sentiment_labels)
+plt.title("Sentiment Confusion Matrix")
+
+plt.subplot(1,2,2)
+sns.heatmap(cat_cm, annot=True, fmt='d', xticklabels=category_labels, yticklabels=category_labels)
+plt.title("Category Confusion Matrix")
+plt.tight_layout()
+plt.show()
+#inference on user input
+def clean_kannada(s): return re.sub(r'\s+', ' ', s).strip()
+
+def predict_with_model(model, text, id2label):
+    enc = tokenizer(text, return_tensors="pt", truncation=True, padding=True, max_length=max_length).to(model.device)
+    model.eval()
+    with torch.no_grad():
+        logits = model(**enc).logits.detach().cpu().numpy()[0]
+        probs = np.exp(logits - np.max(logits)) / np.sum(np.exp(logits - np.max(logits)))
+        pred_idx = int(np.argmax(logits))
+    return id2label[pred_idx], probs[pred_idx], probs
+
+print("Paste your Kannada article below:")
+user_text = input().strip()
+
+if len(user_text) < 5:
+    print("Too short.")
+else:
+    text = clean_kannada(user_text)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    sent_model.to(device)
+    cat_model.to(device)
+
+    sent_label, sent_conf, sent_probs = predict_with_model(sent_model, text, id2sent)
+    cat_label, cat_conf, cat_probs = predict_with_model(cat_model, text, id2cat)
+
+    try:
+        translation = translator.translate(user_text, src='kn', dest='en').text
+    except:
+        translation = "[Translation failed]"
+
+    print("\nKannada:", text)
+    print("Sentiment:", sent_label.upper(), f"({sent_conf:.2f})")
+    print("Category :", cat_label.upper(), f"({cat_conf:.2f})")
+    print("English Translation:", translation)
+
+    plt.figure(figsize=(10, 4))
+    plt.subplot(1, 2, 1)
+    sns.barplot(x=[id2sent[i].upper() for i in range(len(sentiment_labels))], y=sent_probs)
+    plt.title("Sentiment Probabilities")
+    plt.ylim(0,1)
+
+    plt.subplot(1, 2, 2)
+    sns.barplot(x=[id2cat[i] for i in range(len(category_labels))], y=cat_probs)
+    plt.title("Category Probabilities")
+    plt.ylim(0,1)
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+    plt.show()
