@@ -1,4 +1,5 @@
 models/*.h5
+*.h5
 dataset.zip
 *.zip
-*.h5
+__pycache__/
