@@ -1,22 +1,20 @@
 FROM tensorflow/tensorflow:2.11.0
 
-# working dir inside container
+# Set working directory inside container
 WORKDIR /app
 
-# copy requirements and install (pins in requirements.txt should include protobuf fix)
+# Install Python dependencies
 COPY requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r /app/requirements.txt
-
-# ensure requests is available for downloader (redundant-safe)
 RUN pip install --no-cache-dir requests
 
-# copy the repository
+# Copy entire project
 COPY . /app
 
-# make startup script executable
+# Make start script executable
 RUN chmod +x /app/start.sh
 
-# environment
+# Environment variables for Streamlit
 ENV PORT=8501 \
     STREAMLIT_SERVER_HEADLESS=true \
     STREAMLIT_SERVER_ENABLE_WEBSOCKET_COMPRESSION=true \
@@ -25,5 +23,5 @@ ENV PORT=8501 \
 
 EXPOSE 8501
 
-# run start.sh which downloads models then launches streamlit
+# Run startup script (downloads models -> runs Streamlit)
 CMD ["/bin/bash", "/app/start.sh"]
